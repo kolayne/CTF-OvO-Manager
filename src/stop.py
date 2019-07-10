@@ -7,7 +7,7 @@ from time import sleep
 import mysql.connector
 
 from common import is_help_request, \
-        load_mysql_auth_data, \
+        get_db_connection, \
         assert_ok_dbname
 
 usage = """Usage: ovo stop <id: str>
@@ -20,11 +20,7 @@ def _main(game_id:str):
         id (str): Game identificator
     """
     mysql_username, mysql_password = load_mysql_auth_data()
-    db = mysql.connector.connect(
-            host='localhost',
-            user=mysql_username,
-            passwd=mysql_password
-            )
+    db = get_db_connection()
     c = db.cursor()
     assert_ok_dbname(game_id)
     c.execute('USE OvO_' + game_id)

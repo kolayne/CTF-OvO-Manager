@@ -8,7 +8,7 @@ from pathlib import Path
 import mysql.connector
 
 from common import is_help_request, \
-        load_mysql_auth_data, \
+        get_db_connection, \
         assert_ok_dbname
 from stop import _main as stop
 
@@ -46,13 +46,13 @@ def init_db(db_name:str, c):
             login VARCHAR(3072) PRIMARY KEY NOT NULL, \
             password TEXT NOT NULL, \
             is_admin ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
-            avatar TEXT \
+            avatar VARCHAR(128) \
             )"
     c.execute(query)
     query = "CREATE TABLE tasks ( \
             id VARCHAR(128) PRIMARY KEY NOT NULL, \
             name TEXT, \
-            solved ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
+            is_solved ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
             original_link TEXT, \
             original_id TEXT, \
             task_text TEXT \
@@ -65,16 +65,21 @@ def init_db(db_name:str, c):
             )"
     c.execute(query)
     query = "CREATE TABLE files ( \
-            file_id VARCHAR(128) PRIMARY KEY NOT NULL, \
-            file_name TEXT NOT NULL \
+            id VARCHAR(128) PRIMARY KEY NOT NULL, \
+            name TEXT NOT NULL \
             )"
     c.execute(query)
     query = "CREATE TABLE comments( \
+            comment_id VARCHAR(128) NOT NULL PRIMARY KEY, \
             task_id VARCHAR(128) NOT NULL, \
-            comment_id VARCHAR(128) NOT NULL, \
-            comment_text TEXT, \
-            attached_files_ids TEXT, \
-            PRIMARY KEY (`task_id`, `comment_id`) \
+            user_id VARCHAR(2944) NOT NULL, \
+            text TEXT, \
+            attached_files_ids TEXT \
+            )"
+    c.execute(query)
+    query = "CREATE TABLE session_data( \
+            user_id VARCHAR(2944) NOT NULL PRIMARY KEY, \
+            session_id VARCHAR(128) NOT NULL UNIQUE KEY \
             )"
     c.execute(query)
     query = "CREATE TABLE game_info( \
@@ -96,12 +101,7 @@ def _main(args:list, rerun:bool=False):
     """
     assert_ok_dbname(args['--id'])
 
-    mysql_username, mysql_password = load_mysql_auth_data()
-    db = mysql.connector.connect(
-            host='localhost',
-            user=mysql_username,
-            passwd=mysql_password
-            )
+    db = get_db_connection()
     db.autocommit = False
     c = db.cursor()
     c.execute('SHOW DATABASES')

@@ -6,7 +6,7 @@ from os import path, remove, rmdir
 import mysql.connector
 
 from common import is_help_request, \
-        load_mysql_auth_data, \
+        get_db_connection, \
         assert_ok_dbname
 from stop import _main as stop
 
@@ -21,11 +21,7 @@ def _main(game_id:str, timer:int=0):
         timer(int, optional): if specified, the user will be given `timer` seconds to interrupt
     """
     mysql_username, mysql_password = load_mysql_auth_data()
-    db = mysql.connector.connect(
-            host='localhost',
-            user=mysql_username,
-            passwd=mysql_password
-            )
+    db = get_db_connection()
     db.autocommit = False
     c = db.cursor()
     assert_ok_dbname(game_id)

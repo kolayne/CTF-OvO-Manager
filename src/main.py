@@ -5,6 +5,7 @@ from common import is_help_request
 from run import main as run
 from stop import main as stop
 from cleanup import main as cleanup
+from owo import main as owo
 
 usage = """Usage: ovo <command> [<args>]
 
@@ -30,7 +31,7 @@ if __name__ == "__main__":
     elif(argv[1] == 'cleanup'):
         cleanup(argv[1:], timer=5)
     elif(argv[1] == 'owo'):
-        pass
+        owo(argv[1:])
     else:
         print("Unknown command {}. Try --help for usage".format(argv[1]), file=stderr)
         exit(1)
