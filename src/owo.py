@@ -17,17 +17,17 @@ Calls an operation (`command`) for a running game with the given id
 
 The following commands are avaliable:
     add task <--name: str> [--original-link: str] [--original-id str] [--text str]
-        Adds the task. original-id is a value used to identify that the task
-            has already been imported from the original platform
+        Adds a task. original-id is used to protect from importing one task
+            multiple times from the platform
     add file <name: str>
         Creates the file id (it will be printed). You have to save your file
             as ${GAME_FILES_FOLDER}/${FILE_ID}. After that you can use
             the generated id as an argument for other commands
     add user <--login: str> <--password: str> [--is-captain] [--avatar: str]
-        Adds the user. avatar is the file id (got after `ovo owo add file`)
+        Adds a user. avatar is the file id (got after `ovo owo add file`)
     add comment <--user-id: str> <--text: str> <--task-id: str> [<--file-id: str>]
-        Adds the comment. Can contain an attachment or attachmentS (--file-id)
-    rm <task, file, user, comment> <entity_id: str>
+        Adds a comment. Can contain an attachment or attachmentS (--file-id)
+    rm <task/file/user/comment> <entity_id: str>
         Removes the entity with the given id
     mark user <user_id: str> <captain/default>
         Marks the user as a captain or as a default participant
@@ -114,7 +114,7 @@ def add_user(game_id:str, login:str, password:str,
         game_id(str): The game identifier
         login(str): The user identifier
         password(str): User's password
-        is_captain(bool, optional): if the registering user must become captain
+        is_captain(bool, optional): if the user being registered must become captain
         avatar_file_id(str, optional): The avatar file id (got from add_file)
     """
     assert_ok_dbname(game_id)
@@ -136,9 +136,9 @@ def add_comment(game_id:str, user_id:str, task_id:str, text:str=None, files_ids:
     Parameters:
         game_id(str): The game identifier
         user_id(str): The comment author identifier
-        task_id(str): The commenting task's identifier
+        task_id(str): The begin commented task's identifier
         text(str, optional): The comment text
-        files_ids(list[str], optional): Identifiers of the attaching files
+        files_ids(list[str], optional): Identifiers of the files being attached
     Returns:
         str: The created comment id
     """
@@ -149,13 +149,13 @@ def add_comment(game_id:str, user_id:str, task_id:str, text:str=None, files_ids:
             VALUES (%s, %s, %s, %s, %s)'
     return _db_insert(game_id, query, (task_id, user_id, text, json.dumps(files_ids)))
 
-def _db_rmer(game_id:str, table_name:str, removing_id:str, entity_id:str):
+def _db_rmer(game_id:str, table_name:str, remove_field_id:str, entity_id:str):
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
     c.execute('SHOW TABLES')
     assert(table_name in map(lambda x: x[0], c.fetchall()))
-    c.execute('DELETE FROM {} WHERE {}=(%s)'.format(table_name, removing_id), (entity_id,))
+    c.execute('DELETE FROM {} WHERE {}=(%s)'.format(table_name, remove_field_id), (entity_id,))
     db.commit()
 
 def rm_task(game_id:str, task_id:str) -> list:

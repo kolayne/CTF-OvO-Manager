@@ -31,7 +31,7 @@ def get_db_connection():
             )
 
 def assert_ok_dbname(dbname:str):
-    """Function for checking dbname is an ok name for db
+    """Function for checking if dbname is an ok name for db
     Parameters:
         dbname(str): The name to be checked
     

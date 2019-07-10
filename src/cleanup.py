@@ -12,7 +12,8 @@ from stop import _main as stop
 
 usage = """Usage: ovo cleanup <id: string>
 
-Removes all the information about the game with the given id, including uploaded files"""
+Removes all the information about the game with the given id, including uploaded files
+"""
 
 def _main(game_id:str, timer:int=0):
     """Removes all the game info, including uploaded files
@@ -20,11 +21,9 @@ def _main(game_id:str, timer:int=0):
         game_id(str): The removable game identificator
         timer(int, optional): if specified, the user will be given `timer` seconds to interrupt
     """
-    mysql_username, mysql_password = load_mysql_auth_data()
-    db = get_db_connection()
-    db.autocommit = False
-    c = db.cursor()
     assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
     c.execute('USE OvO_' + game_id)
 
     while timer > 0:
@@ -32,10 +31,7 @@ def _main(game_id:str, timer:int=0):
 identificator. You have {} seconds left to interrupt (Ctrl+C)".format(
                     game_id,
                     timer
-                    ),
-                file=stderr,
-                end='\r'
-                )
+                    ), file=stderr, end='\r')
         sleep(1)
         timer -= 1
     print()
@@ -45,7 +41,7 @@ identificator. You have {} seconds left to interrupt (Ctrl+C)".format(
     c.execute('SELECT files_folder FROM game_info')
     folder, = c.fetchone()
     c.execute('SELECT file_id FROM files')
-    for filename in list(map(lambda x: x[0], c.fetchall())) + ['exit']:
+    for filename in ['exit'] + list(map(lambda x: x[0], c.fetchall())):
         try:
             remove(path.join(folder, filename))
         except FileNotFoundError:

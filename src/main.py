@@ -16,7 +16,8 @@ These are ovo commands:
     rerun   run an existing stopped game
     stop    stop the game by it's id
     cleanup remove game's database and remove all the files
-    owo     run operation with a running game (more info in `ovo owo --help`)"""
+    owo     run operation with a running game (more info in `ovo owo --help`)
+"""
 
 if __name__ == "__main__":
     if(len(argv) == 1) or is_help_request(argv):

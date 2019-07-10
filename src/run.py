@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 from sys import argv, stderr
-import configparser
 from getpass import getpass
 from os import listdir, remove, path
 from pathlib import Path
@@ -16,30 +15,32 @@ usage = """Usage: ovo <run/rerun> [<args>]. Required arguments not specified in 
 
 Runs a new game under OvO Manager
 
-If you're running run:
+If you're running `run`:
 Required args:
-    -i, --id: str               An identificator of a game. Will be used to stop or cleanup the game. The ('OvO_' + id) database will be created in MySQL
-    -r, --register-pass: str    A password which is required to register in the system
-    -c, --captain-pass: str     A password which is required to register as a team captain
+    -i, --id: str               An identifier of the game. Will be used to stop or cleanup it. The ('OvO_' + id) database will be created in MySQL
+    -r, --register-pass: str    A password which will be required to register in the system
+    -c, --captain-pass: str     A password which will be required to register as a team captain
     -p, --port: int             The port to run web interface on
-    -f, --files-folder: str     Path to the folder where uploaded files will be stored
+    -f, --files-folder: str     Path to the folder where (uploaded) files will be stored
 Positional args:
-    --judge-url: str            The url to the CTF platform to get tasks from. Url must inclide protocol (http/https/...) and port
+    --judge-url: str            An url to the CTF platform to get tasks from. It must contain protocol (http/https/...) and port
     --judge-login: str          User login for the CTF platform. Not needed to specify, if the CTF platform supports getting tasks with no authorization
-    --judge-pass: str       User password for the CTF platform. Not needed to specify, if the CTF platform supports getting tasks with no authorization
+    --judge-pass: str           User password for the CTF platform. Not needed to specify, if the CTF platform supports getting tasks with no authorization
 
-If you're running rerun, id is the only required argument. No arguments will be requested from stdin for rerun
+If you're running rerun, `id` is the only required argument. No arguments will be requested from stdin for rerun
 
 Examples:
     ovo run -i HeLlO -r easy_password --captain-pass harder_password --port 5000 --judge-url http://ctfd_host.ru:5000 --judge-login a --judge-pass b
-    ovo rerun -i HeLlO --judge-url https://ctfd_host.ru/path/to/ctfd --captain-pass new_password"""
+    ovo rerun -i HeLlO --judge-url https://ctfd_host.ru/path/to/ctfd --captain-pass new_password
+"""
 
 def init_db(db_name:str, c):
-    """Initializes mysql database for a new game
+    """Initializes a mysql database for a new game
     Parameters:
         db_name (str): New database name
         cursor: mysql cursor
     """
+    assert_ok_dbname(db_name)
     c.execute('CREATE DATABASE {}'.format(db_name))
     c.execute('USE ' + db_name)
     query = "CREATE TABLE users ( \
@@ -90,7 +91,7 @@ def init_db(db_name:str, c):
             judge_url TEXT, \
             judge_login TEXT, \
             judge_pass TEXT, \
-            _uniquer ENUM('0') NOT NULL DEFAULT '0' PRIMARY KEY \
+            _uniquer ENUM('0') NOT NULL DEFAULT '0' UNIQUE KEY \
             )"
     c.execute(query)
 
@@ -102,37 +103,37 @@ def _main(args:list, rerun:bool=False):
     assert_ok_dbname(args['--id'])
 
     db = get_db_connection()
-    db.autocommit = False
     c = db.cursor()
     c.execute('SHOW DATABASES')
-    if(args['--id'] in map(lambda x: x[0], c.fetchall())):
+    if('OvO_' + args['--id'] in map(lambda x: x[0], c.fetchall())):
         if rerun:
             stop(args['--id'])
         else:
-            raise RuntimeError("The game with {} identificator already exists".format(args['--id']))
+            raise RuntimeError("The game with {} identifier already exists".format(args['--id']))
     
-    # Saving/Updating values
-    if rerun:
+    if rerun: # Updating values
         c.execute('USE OvO_' + args['--id'])
         for arg, value in args.items():
             if(arg == '--id'): continue
-            query = 'UPDATE game_info SET {} = (%s)'.format(arg[2:].replace('-', '_'))
-            c.execute(query, (value,))
-    else:
+            key = arg[2:].replace('-', '_')
+            assert_ok_dbname(key)
+            query = 'UPDATE game_info SET {}=(%s)'
+            c.execute(query.format(key), (value,))
+    else: # Saving values
         init_db('OvO_' + args['--id'], c)
         c.execute('INSERT INTO game_info (port, files_folder, register_pass, captain_pass, judge_url, judge_login, judge_pass) \
                 VALUES (%s, %s, %s, %s, %s, %s, %s)', tuple(map(lambda x: args.get(x), [
                     '--port', '--files-folder', '--register-pass', '--captain-pass', '--judge-url', '--judge-login', '--judge-pass'
-                    ]))) # If some required values were not specified, MySQL will raise ProgrammingError
+                    ]))) # If some required values were not specified, MySQL will raise an exception
     if rerun:
-        # Remove the stop-file if exists
+        # Remove the stop-file if exists:
         c.execute('SELECT files_folder FROM game_info')
         try:
             remove(path.join(c.fetchone()[0], 'exit'))
         except FileNotFoundError:
             pass
     else:
-        # Create files directory
+        # Create files directory:
         try:
             Path(args['--files-folder']).mkdir(parents=True, exist_ok=False)
         except FileExistsError:
@@ -160,18 +161,18 @@ def main(args:list, rerun:bool=False):
     required = ['--id', '--register-pass', '--captain-pass', '--port', '--files-folder']
 
     converted_args = {}
-    now_inserting_key = None
+    now_insertable_key = None
     for arg in args:
-        if(now_inserting_key is None):
+        if(now_insertable_key is None):
             if(arg in long_only) or (arg in to_long.values()):
-                now_inserting_key = arg
+                now_insertable_key = arg
             elif arg in to_long.keys():
-                now_inserting_key = to_long[arg]
+                now_insertable_key = to_long[arg]
             else:
                 raise ValueError("Unknown argument {}. Please, see --help".format(arg))
         else:
-            converted_args[now_inserting_key] = arg
-            now_inserting_key = None
+            converted_args[now_insertable_key] = arg
+            now_insertable_key = None
 
     if not rerun:
         for arg in required:
