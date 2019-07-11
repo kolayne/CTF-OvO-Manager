@@ -108,26 +108,26 @@ following name: {}".format(ans), file=stderr)
     return ans
 
 def add_user(game_id:str, login:str, password:str,
-        is_captain:bool=False, avatar_file_id:str=None):
+        is_captain:bool=False, avatar:str=None):
     """Adds the user to the game database
     Parameters:
         game_id(str): The game identifier
         login(str): The user identifier
         password(str): User's password
         is_captain(bool, optional): if the user being registered must become captain
-        avatar_file_id(str, optional): The avatar file id (got from add_file)
+        avatar(str, optional): The avatar file id (got from add_file)
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    query = 'INSERT INTO users(login, password, is_admin, avatar) \
+    query = 'INSERT INTO users(login, password, is_captain, avatar) \
             VALUES (%s, %s, %s, %s)'
     c.execute(query, (
         login,
         bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
         'Y' if is_captain else 'N',
-        avatar_file_id
+        avatar
         ))
     db.commit()
 
@@ -239,11 +239,11 @@ def mark_user(game_id:str, user_id:str, new_type:str):
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    query = 'UPDATE users SET is_admin=(%s)'
+    query = 'UPDATE users SET is_captain=(%s) WHERE login=(%s)'
     if new_type == "captain":
-        c.execute(query, ('Y',))
+        c.execute(query, ('Y', user_id))
     elif new_type == "default":
-        c.execute(query, ('N',))
+        c.execute(query, ('N', user_id))
     else:
         raise ValueError("Unknown user type. Must be either captain or default")
     db.commit()
@@ -365,13 +365,13 @@ def main(args: list):
                     continue
                 d[now_insertable[2:].replace('-', '_')] = arg
                 now_insertable = None
-            ans = take_task(**d)
+            ans = take_task(game_id, **d)
         else:
             raise ValueError("Unknown command {}. Try --help for usage".format(args[2]))
     except IndexError:
         raise ValueError("Wrong number of arguments specified. Try --help for usage")
     except TypeError:
-        raise ValueError("Looks like you either missed an argument or gave an unexpected one. For more information, read the original error mentioned above or read the ovo owo --help")
+        raise ValueError("Looks like you either missed an argument, gave an unexpected one or gave an argument of a wrong type. For more information, read the original error mentioned above or read the ovo owo --help")
 
     if ans is not None:
         print(json.dumps(ans))

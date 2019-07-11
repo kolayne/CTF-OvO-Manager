@@ -46,7 +46,7 @@ def init_db(db_name:str, c):
     query = "CREATE TABLE users ( \
             login VARCHAR(3072) PRIMARY KEY NOT NULL, \
             password TEXT NOT NULL, \
-            is_admin ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
+            is_captain ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
             avatar VARCHAR(128) \
             )"
     c.execute(query)
@@ -95,7 +95,7 @@ def init_db(db_name:str, c):
             )"
     c.execute(query)
 
-def _main(args:list, rerun:bool=False):
+def _main(args:dict, rerun:bool=False):
     """Runs a new OvO game
     Parameters:
         args (dict): Arguments dict in the {agument: value} format
@@ -111,6 +111,9 @@ def _main(args:list, rerun:bool=False):
         else:
             raise RuntimeError("The game with {} identifier already exists".format(args['--id']))
     
+    if '--files-folder' in args.keys():
+        args['--files-folder'] = path.abspath(args['--files-folder'])
+
     if rerun: # Updating values
         c.execute('USE OvO_' + args['--id'])
         for arg, value in args.items():

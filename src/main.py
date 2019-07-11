@@ -30,7 +30,7 @@ if __name__ == "__main__":
     elif(argv[1] == 'stop'):
         stop(argv[1:])
     elif(argv[1] == 'cleanup'):
-        cleanup(argv[1:], timer=5)
+        cleanup(argv[1:])
     elif(argv[1] == 'owo'):
         owo(argv[1:])
     else:

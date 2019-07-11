@@ -22,13 +22,15 @@ def _load_mysql_auth_data() -> tuple:
     return (config['mysql']['username'],
             config['mysql']['password'])
 
-def get_db_connection():
+def get_db_connection(autocommit=False):
     mysql_username, mysql_password = _load_mysql_auth_data()
-    return mysql.connector.connect(
+    db = mysql.connector.connect(
             host='localhost',
             user=mysql_username,
             passwd=mysql_password
             )
+    db.autocommit = autocommit
+    return db
 
 def assert_ok_dbname(dbname:str):
     """Function for checking if dbname is an ok name for db

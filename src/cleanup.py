@@ -40,7 +40,7 @@ identificator. You have {} seconds left to interrupt (Ctrl+C)".format(
 
     c.execute('SELECT files_folder FROM game_info')
     folder, = c.fetchone()
-    c.execute('SELECT file_id FROM files')
+    c.execute('SELECT id FROM files')
     for filename in ['exit'] + list(map(lambda x: x[0], c.fetchall())):
         try:
             remove(path.join(folder, filename))
@@ -63,7 +63,7 @@ identificator. You have {} seconds left to interrupt (Ctrl+C)".format(
     except Exception as e:
         print("Important warning: couldn't delete the folder, because of unknown error ({})".format(e), file=stderr)
     
-    c.execute('DROP DATABASE OvO_' + game_id)
+    c.execute('DROP DATABASE OvO_' + game_id) # The program freezes here until the database is freed
     db.commit()
 
 def main(args, timer=0):
