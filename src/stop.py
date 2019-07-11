@@ -16,9 +16,9 @@ Stops the OvO game with the given id
 """
 
 def _main(game_id:str):
-    """Creates a stop-file for the game with given id
+    """Creates a stop-file for the game with the given id
     Parameters:
-        id (str): Game identificator
+        id (str): The game identifier
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()

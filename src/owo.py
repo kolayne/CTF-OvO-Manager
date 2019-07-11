@@ -15,12 +15,14 @@ usage = """Usage: ovo owo <game_id: str> <command> [<args>]
 
 Calls an operation (`command`) for a running game with the given id
 
+When adding a file, a task or a comment, `json.dumps(it's identifier)` is printed to stdout
+
 The following commands are avaliable:
     add task <--name: str> [--original-link: str] [--original-id str] [--text str]
-        Adds a task. original-id is used to protect from importing one task
-            multiple times from the platform
+        Adds a task. `original-id` is used to protect from importing one task
+            several times from the main platform
     add file <name: str>
-        Creates the file id (it will be printed). You have to save your file
+        Creates the file id. You have to save your file
             as ${GAME_FILES_FOLDER}/${FILE_ID}. After that you can use
             the generated id as an argument for other commands
     add user <--login: str> <--password: str> [--is-captain] [--avatar: str]
@@ -36,8 +38,10 @@ The following commands are avaliable:
     update_avatar <user_id: str> <file_id: str>
         Updates user's avatar with the given file
     take_task <--task-id: str> <--user-id: str>
-        Remembers, that the user is solving the task. One user can take multiple
-            tasks. One task can be taken by multiple users
+        States that the user is solving the task. One user can take several
+            tasks. One task can be taken by several users
+    reject_task <--task-id: str> <--user-id: str>
+        Antonym for take_task
 
 Examples:
     ovo owo MY_GAME_1 add user --login user1 --password abcde
@@ -95,8 +99,8 @@ def add_file(game_id:str, name:str, silent:bool=False) -> str:
     Parameters:
         game_id(str): The game identifier
         name(str): The file name to be displayed
-        silent(bool, optional): If the function has to be silent or \
-                it can output some hints to stderr
+        silent(bool, optional): If the function has to be quiet or \
+                it can print some hints to stderr
     Returns:
         str: The created file id
     """
@@ -135,12 +139,12 @@ def add_comment(game_id:str, user_id:str, task_id:str, text:str=None, files_ids:
     """Adds the comment to the game database
     Parameters:
         game_id(str): The game identifier
-        user_id(str): The comment author identifier
-        task_id(str): The begin commented task's identifier
+        user_id(str): The comment's author login
+        task_id(str): An identifier of the task being commented
         text(str, optional): The comment text
         files_ids(list[str], optional): Identifiers of the files being attached
     Returns:
-        str: The created comment id
+        str: The created comment's id
     """
     if files_ids is None:
         files_ids = []
@@ -164,7 +168,7 @@ def rm_task(game_id:str, task_id:str) -> list:
         game_id(str): The game identifier
         task_id(str): The task identifier
     Returns:
-        list[str]: ids of files which were attached to the task
+        list[str]: ids of the files attached to the task
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -215,7 +219,7 @@ def rm_comment(game_id:str, comment_id:str) -> list:
         game_id(str): The game indentifier
         comment_id(str): The comment identifier
     Returns:
-        list[str]: ids of files which were attached to the comment
+        list[str]: ids of the files attached to the comment
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -284,8 +288,8 @@ def update_avatar(game_id:str, user_id:str, avatar_file_id:str):
 
 def take_task(game_id:str, task_id:str, user_id:str):
     """Creates a connection between the user and the task
-            (a user can be connected to multiple tasks,
-            a task can be connected to multiple users)
+            (a user can be connected to several tasks,
+            a task can be connected to several users)
        Parameters:
             game_id(str): The game identifier
             task_id(str): The task identifier
@@ -296,6 +300,20 @@ def take_task(game_id:str, task_id:str, user_id:str):
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('INSERT INTO solvings(task_id, user_id) VALUES (%s, %s)', (task_id, user_id))
+    db.commit()
+
+def reject_task(game_id:str, task_id:str, user_id:str):
+    """Antonym for take_task
+       Parameters:
+            game_id(str): The game identifier
+            task_id(str): The task identifier
+            user_id(str): The user identifier
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('DELETE FROM solvings WHERE task_id=(%s) AND user_id=(%s)', (task_id, user_id))
     db.commit()
 
 def main(args: list):
@@ -356,7 +374,7 @@ def main(args: list):
             ans = {'user': mark_user, 'task': mark_task}[args[3]](game_id, args[4], args[5])
         elif args[2] == 'update_avatar':
             ans = update_avatar(game_id, args[3], args[4])
-        elif args[2] == 'take_task':
+        elif args[2] in ['take_task', 'reject_task']:
             d = {}
             now_insertable = None
             for arg in args[3:]:
@@ -365,7 +383,7 @@ def main(args: list):
                     continue
                 d[now_insertable[2:].replace('-', '_')] = arg
                 now_insertable = None
-            ans = take_task(game_id, **d)
+            ans = {'take_task': take_task, 'reject_task': reject_task}[args[2]](game_id, **d)
         else:
             raise ValueError("Unknown command {}. Try --help for usage".format(args[2]))
     except IndexError:

@@ -4,7 +4,7 @@ from configparser import ConfigParser
 import mysql.connector
 
 def is_help_request(l:list) -> bool:
-    """Function for checking if the given argv is a help request
+    """Function for checking if the given arguments list (i. e. argv) is a help request
     Parameters:
         l(list): Arguments list
     Returns:
@@ -37,7 +37,7 @@ def assert_ok_dbname(dbname:str):
     Parameters:
         dbname(str): The name to be checked
     
-    Throws ValueError if dbname is not a correct name for db
+    Raises ValueError if dbname is not a correct name for db
     """
     if(not all(map(lambda x: x.isalpha() or x.isdigit() or x == '_', dbname))):
         raise ValueError("The identificator can only contain letters, digits, or _ symbols")

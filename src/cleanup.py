@@ -18,7 +18,7 @@ Removes all the information about the game with the given id, including uploaded
 def _main(game_id:str, timer:int=0):
     """Removes all the game info, including uploaded files
     Parameters:
-        game_id(str): The removable game identificator
+        game_id(str): The game begin removed identifier
         timer(int, optional): if specified, the user will be given `timer` seconds to interrupt
     """
     assert_ok_dbname(game_id)

@@ -18,16 +18,16 @@ Runs a new game under OvO Manager
 If you're running `run`:
 Required args:
     -i, --id: str               An identifier of the game. Will be used to stop or cleanup it. The ('OvO_' + id) database will be created in MySQL
-    -r, --register-pass: str    A password which will be required to register in the system
-    -c, --captain-pass: str     A password which will be required to register as a team captain
+    -r, --register-pass: str    A password required to register in the system
+    -c, --captain-pass: str     A password required to register as a team captain
     -p, --port: int             The port to run web interface on
-    -f, --files-folder: str     Path to the folder where (uploaded) files will be stored
+    -f, --files-folder: str     The path to the folder where (uploaded) files will be stored
 Positional args:
-    --judge-url: str            An url to the CTF platform to get tasks from. It must contain protocol (http/https/...) and port
-    --judge-login: str          User login for the CTF platform. Not needed to specify, if the CTF platform supports getting tasks with no authorization
-    --judge-pass: str           User password for the CTF platform. Not needed to specify, if the CTF platform supports getting tasks with no authorization
+    --judge-url: str            An url to the CTF platform to get tasks from. It must contain protocol (http/https/...) and port if not 80
+    --judge-login: str          User login for the CTF platform. No need to specify, if the CTF platform supports getting tasks with no authorization
+    --judge-pass: str           User password for the CTF platform. No need to specify, if the CTF platform supports getting tasks with no authorization
 
-If you're running rerun, `id` is the only required argument. No arguments will be requested from stdin for rerun
+If you're running `rerun`, `id` is the only required argument. No arguments will be requested from stdin for `rerun`
 
 Examples:
     ovo run -i HeLlO -r easy_password --captain-pass harder_password --port 5000 --judge-url http://ctfd_host.ru:5000 --judge-login a --judge-pass b
@@ -37,7 +37,7 @@ Examples:
 def init_db(db_name:str, c):
     """Initializes a mysql database for a new game
     Parameters:
-        db_name (str): New database name
+        db_name(str): New database name
         cursor: mysql cursor
     """
     assert_ok_dbname(db_name)

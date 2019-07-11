@@ -14,9 +14,9 @@ The CTF OvO Manager is an application that helps you controlling task distributi
 These are ovo commands:
     run     run a new game
     rerun   run an existing stopped game
-    stop    stop the game by it's id
+    stop    stop the game
     cleanup remove game's database and remove all the files
-    owo     run operation with a running game (more info in `ovo owo --help`)
+    owo     call an operation with a running game (more info in `ovo owo --help`)
 """
 
 if __name__ == "__main__":

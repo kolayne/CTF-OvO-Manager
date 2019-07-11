@@ -17,7 +17,6 @@ def _run_and_check(cmd:list) -> str:
         str: The process' stdout
     """
     p = run(cmd, stdout=PIPE, stderr=PIPE)
-    p.check_returncode()
     if(p.returncode):
         print("Stdout:", p.stdout, file=stderr)
         print("Stderr:", p.stderr, file=stderr)
@@ -174,10 +173,10 @@ def test_owo():
             '--user-id', 'user2'])
     c.execute('SELECT * FROM solvings')
     assert(set(c.fetchall()) == {('user1', tid), ('user2', tid)})
-    #_run_and_check(['../src/main.py', 'owo', game_id, 'reject_task', '--task-id', tid, \
-    #        '--user-id', 'user1'])
-    #c.execute('SELECT * FROM solvings')
-    #assert(set(c.fetchall()) == {('user2', tid)})
+    _run_and_check(['../src/main.py', 'owo', game_id, 'reject_task', '--task-id', tid, \
+            '--user-id', 'user1'])
+    c.execute('SELECT * FROM solvings')
+    assert(set(c.fetchall()) == {('user2', tid)})
 
     db.close()
     _run_and_check(['../src/main.py', 'cleanup', game_id])
