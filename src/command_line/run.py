@@ -5,6 +5,7 @@ from os import listdir, remove, path
 from pathlib import Path
 
 import mysql.connector
+import bcrypt
 
 from common import is_help_request, \
         get_db_connection, \
@@ -142,6 +143,15 @@ def _main(args:dict, rerun:bool=False):
         except FileExistsError:
             if len(list(listdir(args['--files-folder']))):
                raise ValueError("The folder for files must be empty")
+
+    if 'register_pass' in args.keys():
+        c.execute('UPDATE game_info SET register_pass=(%s)',
+                (bcrypt.hashpw(args['register_pass'].encode('utf-8'),
+                    bcrypt.gensalt()).decode('utf-8')),)
+    if 'captain_pass' in args.keys():
+        c.execute('UPDATE game_info SET captain_pass=(%s)',
+                (bcrypt.hashpw(args['captain_pass'].encode('utf-8').
+                    bcrypt.gensalt()).decode('utf-8')),)
 
     pass # RUN TASKS CATCHER HERE
     pass # RUN WEB INTERFACE HERE
