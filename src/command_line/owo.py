@@ -42,6 +42,8 @@ The following commands are avaliable:
             tasks. One task can be taken by several users
     reject_task <--task-id: str> <--user-id: str>
         Antonym for take_task
+    authorize ...
+        The command is defined here, but you can't call it from the command line
 
 Examples:
     ovo owo MY_GAME_1 add user --login user1 --password abcde
@@ -64,7 +66,7 @@ def _db_insert(game_id:str, query:str, values:tuple):
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    while True: # Looging for id wasn't given before
+    while True: # Looking for id wasn't given before
         local_id = _generate_id()
         try:
             c.execute(query, [local_id] + list(values))
@@ -315,6 +317,35 @@ def reject_task(game_id:str, task_id:str, user_id:str):
     c.execute('USE OvO_' + game_id)
     c.execute('DELETE FROM solvings WHERE task_id=(%s) AND user_id=(%s)', (task_id, user_id))
     db.commit()
+
+def authorize(game_id:str, user_id:str, password:str) -> str:
+    """Either creates a session key or gives an existing one
+    The session key can be used for web api requests
+    Parameters:
+        game_id(str): The game identifier
+        user_id(str): The user identifier
+        password(str): The user's password
+    Returns:
+        str: The session key
+
+    Raises ValueError if the password isn't correct
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT password FROM users WHERE login=(%s)',
+            (user_id,))
+    if not bcrypt.checkpw(password.encode('utf-8'), c.fetchone()[0].encode('utf-8')):
+        raise ValueError("The password is not correct")
+
+    c.execute('SELECT session_id FROM session_data WHERE user_id=(%s)',
+            (user_id,))
+    tmp = c.fetchone()
+    if tmp is not None:
+        return tmp[0]
+    query = 'INSERT INTO session_data (session_id, user_id) VALUES (%s, %s)'
+    return _db_insert(game_id, query, (user_id,))
 
 def main(args: list):
     ans = None
