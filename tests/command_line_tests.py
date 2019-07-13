@@ -6,7 +6,7 @@ import json
 
 import bcrypt
 
-common = SourceFileLoader('common', '../src/common.py').load_module()
+common = SourceFileLoader('common', '../src/command_line/common.py').load_module()
 from test_station import TestStation
 
 def _run_and_check(cmd:list) -> str:
@@ -44,7 +44,7 @@ def test_run_stop_rerun_cleanup():
     db = common.get_db_connection(autocommit=True)
     c = db.cursor()
     
-    _run_and_check(['../src/main.py', 'run', '--id', game_id, '--register-pass', '1', \
+    _run_and_check(['../src/command_line/main.py', 'run', '--id', game_id, '--register-pass', '1', \
             '--captain-pass', '2', '--files-folder', './new', '--port', '5000'])
     assert('new' in listdir())
     assert('exit' not in listdir('new'))
@@ -69,9 +69,9 @@ def test_run_stop_rerun_cleanup():
     c.execute('SELECT * FROM game_info')
     assert(c.fetchone() == (5000, path.abspath('./new'), '1', '2', None, None, None, '0'))
 
-    _run_and_check(['../src/main.py', 'stop', game_id])
+    _run_and_check(['../src/command_line/main.py', 'stop', game_id])
     assert('exit' in listdir('new'))
-    _run_and_check(['../src/main.py', 'rerun', '--id', game_id])
+    _run_and_check(['../src/command_line/main.py', 'rerun', '--id', game_id])
     assert('exit' not in listdir('new'))
     c.execute('SELECT COUNT(*) FROM users')
     assert(c.fetchone() == (0,))
@@ -90,7 +90,7 @@ def test_run_stop_rerun_cleanup():
 
     c.execute('USE mysql') # Must do this, otherwise cleanup will freeze
     db.close()
-    _run_and_check(['../src/main.py', 'cleanup', game_id])
+    _run_and_check(['../src/command_line/main.py', 'cleanup', game_id])
     db = common.get_db_connection()
     c = db.cursor()
     assert('new' not in listdir())
@@ -102,33 +102,35 @@ def test_owo():
     common.assert_ok_dbname(game_id)
     db = common.get_db_connection(autocommit=True)
     c = db.cursor()
-    _run_and_check(['../src/main.py', 'run', '--id', 'TeSTing', '--register-pass', '1', \
+    _run_and_check(['../src/command_line/main.py', 'run', '--id', 'TeSTing', '--register-pass', '1', \
             '--captain-pass', '1', '--files-folder', './new', '--port', '5000'])
     c.execute('USE OvO_' + game_id)
-    _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'user', '--login', 'user1', \
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'user', '--login', 'user1', \
             '--password', 'abcde'])
     fid0 = json.loads(
-            _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'file', 'user2 avatar'])
+            _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'file', 'user2 avatar'])
             )
-    _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'user', '--is-captain', \
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'user', '--is-captain', \
             '--password', 'edcba', '--login', 'user2', '--avatar', fid0])
     fid1, fid2, fid3 = (json.loads(
-        _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'file', str(i)])
+        _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'file', str(i)])
             ) for i in range(1, 4))
     tid = json.loads(
-        _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'task', '--text', '*empty*', \
+        _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'task', '--text', '*empty*', \
             '--original-link', 'http://google.com', '--name', 'First task'])
         )
+    c.execute('SELECT * FROM tasks')
+    assert(c.fetchall() == [(tid, 'First task', 'N', 'http://google.com', None, '*empty*')])
     cid1 = json.loads(
-        _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'comment', '--task-id', tid, \
+        _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'comment', '--task-id', tid, \
                 '--user-id', 'user1', '--text', 'comment text'])
         )
     cid2 = json.loads(
-        _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'comment', '--user-id', 'user1', \
+        _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'comment', '--user-id', 'user1', \
                 '--text', 'one file', '--task-id', tid, '--file-id', fid1])
         )
     cid3 = json.loads(
-        _run_and_check(['../src/main.py', 'owo', game_id, 'add', 'comment', '--file-id', fid2, \
+        _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'comment', '--file-id', fid2, \
                 '--text', 'two files', '--user-id', 'user2', '--file-id', fid3, '--task-id', tid])
         )
     c.execute('SELECT login, is_captain, avatar FROM users')
@@ -150,36 +152,36 @@ def test_owo():
     c.execute('SELECT COUNT(*) FROM session_data')
     assert(c.fetchone() == (0,))
     
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'user', 'user1', 'default'])
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'user', 'user1', 'captain'])
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'user', 'user2', 'captain'])
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'user', 'user2', 'default'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'user', 'user1', 'default'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'user', 'user1', 'captain'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'user', 'user2', 'captain'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'user', 'user2', 'default'])
     c.execute('SELECT is_captain FROM users ORDER BY login')
     assert(list(_parse_mysql_vomit(c.fetchall())) == ['Y', 'N'])
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'task', tid, 'unsolved'])
-    _run_and_check(['../src/main.py', 'owo', game_id, 'mark', 'task', tid, 'solved'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'task', tid, 'unsolved'])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'mark', 'task', tid, 'solved'])
     c.execute('SELECT is_solved FROM tasks')
     assert(c.fetchall() == [('Y',)])
 
-    _run_and_check(['../src/main.py', 'owo', game_id, 'update_avatar', 'user1', fid2])
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'update_avatar', 'user1', fid2])
     c.execute('SELECT avatar FROM users ORDER BY login')
     assert(set(_parse_mysql_vomit(c.fetchall())) == {fid0, fid2})
 
-    _run_and_check(['../src/main.py', 'owo', game_id, 'take_task', '--user-id', 'user1', \
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'take_task', '--user-id', 'user1', \
             '--task-id', tid])
     c.execute('SELECT * FROM solvings')
     assert(set(c.fetchall()) == {('user1', tid)})
-    _run_and_check(['../src/main.py', 'owo', game_id, 'take_task', '--task-id', tid, \
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'take_task', '--task-id', tid, \
             '--user-id', 'user2'])
     c.execute('SELECT * FROM solvings')
     assert(set(c.fetchall()) == {('user1', tid), ('user2', tid)})
-    _run_and_check(['../src/main.py', 'owo', game_id, 'reject_task', '--task-id', tid, \
+    _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'reject_task', '--task-id', tid, \
             '--user-id', 'user1'])
     c.execute('SELECT * FROM solvings')
     assert(set(c.fetchall()) == {('user2', tid)})
 
     db.close()
-    _run_and_check(['../src/main.py', 'cleanup', game_id])
+    _run_and_check(['../src/command_line/main.py', 'cleanup', game_id])
 
 if __name__ == "__main__":
     ts = TestStation()

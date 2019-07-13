@@ -56,7 +56,7 @@ def init_db(db_name:str, c):
             is_solved ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
             original_link TEXT, \
             original_id TEXT, \
-            task_text TEXT \
+            text TEXT \
             )"
     c.execute(query)
     query = "CREATE TABLE solvings ( \
@@ -71,7 +71,7 @@ def init_db(db_name:str, c):
             )"
     c.execute(query)
     query = "CREATE TABLE comments( \
-            comment_id VARCHAR(128) NOT NULL PRIMARY KEY, \
+            id VARCHAR(128) NOT NULL PRIMARY KEY, \
             task_id VARCHAR(128) NOT NULL, \
             user_id VARCHAR(2944) NOT NULL, \
             text TEXT, \

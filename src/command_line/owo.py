@@ -92,7 +92,7 @@ def add_task(game_id:str, name:str, original_link:str=None,
     Returns:
         str: The created task id
     """
-    query = 'INSERT INTO tasks(id, name, original_link, original_id, task_text) \
+    query = 'INSERT INTO tasks(id, name, original_link, original_id, text) \
             VALUES (%s, %s, %s, %s, %s)'
     return _db_insert(game_id, query, (name, original_link, original_id, text))
 
@@ -123,6 +123,8 @@ def add_user(game_id:str, login:str, password:str,
         is_captain(bool, optional): if the user being registered must become captain
         avatar(str, optional): The avatar file id (got from add_file)
     """
+    if login == 'DELETED':
+        raise ValueError("The `DELETED` username is reserved by the OvO Manager")
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
@@ -151,7 +153,7 @@ def add_comment(game_id:str, user_id:str, task_id:str, text:str=None, files_ids:
     if files_ids is None:
         files_ids = []
     assert(all(map(lambda x: type(x) is str, files_ids)))
-    query = 'INSERT INTO comments(comment_id, task_id, user_id, text, attached_files_ids) \
+    query = 'INSERT INTO comments(id, task_id, user_id, text, attached_files_ids) \
             VALUES (%s, %s, %s, %s, %s)'
     return _db_insert(game_id, query, (task_id, user_id, text, json.dumps(files_ids)))
 
@@ -215,11 +217,11 @@ def rm_user(game_id:str, user_id:str) -> str:
     db.commit()
     return ans
 
-def rm_comment(game_id:str, comment_id:str) -> list:
+def rm_comment(game_id:str, id:str) -> list:
     """Removes the comment from the game database
     Parameters:
         game_id(str): The game indentifier
-        comment_id(str): The comment identifier
+        id(str): The comment identifier
     Returns:
         list[str]: ids of the files attached to the comment
     """
@@ -227,9 +229,9 @@ def rm_comment(game_id:str, comment_id:str) -> list:
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    c.execute('SELECT attached_files_ids FROM comments WHERE comment_id=(%s)', (comment_id,))
+    c.execute('SELECT attached_files_ids FROM comments WHERE id=(%s)', (comment_id,))
     ans, = c.fetchone()
-    c.execute('DELETE FROM comments WHERE comment_id=(%s)', (comment_id,))
+    c.execute('DELETE FROM comments WHERE id=(%s)', (comment_id,))
     db.commit()
     return json.loads(ans)
 
@@ -318,12 +320,12 @@ def reject_task(game_id:str, task_id:str, user_id:str):
     c.execute('DELETE FROM solvings WHERE task_id=(%s) AND user_id=(%s)', (task_id, user_id))
     db.commit()
 
-def authorize(game_id:str, user_id:str, password:str) -> str:
+def authorize(game_id:str, login:str, password:str) -> str:
     """Either creates a session key or gives an existing one
     The session key can be used for web api requests
     Parameters:
         game_id(str): The game identifier
-        user_id(str): The user identifier
+        login(str): The user identifier
         password(str): The user's password
     Returns:
         str: The session key
@@ -335,17 +337,17 @@ def authorize(game_id:str, user_id:str, password:str) -> str:
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('SELECT password FROM users WHERE login=(%s)',
-            (user_id,))
+            (login,))
     if not bcrypt.checkpw(password.encode('utf-8'), c.fetchone()[0].encode('utf-8')):
         raise ValueError("The password is not correct")
 
     c.execute('SELECT session_id FROM session_data WHERE user_id=(%s)',
-            (user_id,))
+            (login,))
     tmp = c.fetchone()
     if tmp is not None:
         return tmp[0]
     query = 'INSERT INTO session_data (session_id, user_id) VALUES (%s, %s)'
-    return _db_insert(game_id, query, (user_id,))
+    return _db_insert(game_id, query, (login,))
 
 def main(args: list):
     ans = None
