@@ -1,13 +1,18 @@
 import sys
 import json
+from os import path, _exit
+from functools import wraps
 
 import flask
+import bcrypt
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 sys.path.append('../command_line')
 from owo import add_file, add_user, add_comment, \
-        rm_task, rm_file, rm_comment, \
-        mark_user, mark_task, update_avatar, \
-        take_task, reject_task, authorize
+        rm_comment, mark_user, mark_task, \
+        update_avatar, take_task, reject_task, \
+        authorize
 from common import get_db_connection, \
         assert_ok_dbname
 
@@ -57,7 +62,7 @@ def get_user_info(user_id:str) -> dict:
     else:
         c.execute('SELECT task_id FROM solvings WHERE user_id=(%s)', (user_info['login'],))
         return {'login': user_id, 'is_captain': user_info[0], 'avatar': user_info[1],
-                'solving': _parse_mysql_vomit(c.fetchall())}
+                'solving': list(_parse_mysql_vomit(c.fetchall()))}
 
 def get_task_info(task_id:str) -> dict:
     """Returns the task info like a dict
@@ -65,18 +70,79 @@ def get_task_info(task_id:str) -> dict:
         task_id(str): The task identifier
     Returns:
         dict: A dict with the following keys:
-            pass
+            id(str) - The task identifier
+            name(str or NoneType) - The task name
+            is_solved(bool) - If the task solved or not
+            original_link(str or NoneType) - The link to the task on the main platform
+            original_id(str or NoneType) - The task identifier on main platform
+            text(str or NoneType) - The task text
+            solvers(list) - ids of users, who took the task
     """
-    pass
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT * FROM tasks WHERE id=(%s)', (task_id,))
+    ans = dict(zip(['id', 'name', 'is_solved', 'original_link', 'original_id', 'text'],
+            c.fetchone()))
+    ans['is_solved'] = True if ans['is_solved'] == 'Y' else False
+    c.execute('SELECT user_id FROM solvings WHERE task_id=(%s)', (task_id,))
+    ans['solvers'] = list(_parse_mysql_vomit(c.fetchall()))
+    return ans
 
-def get_comment_info(session_id:str) -> dict:
-    pass
+def get_comment_info(comment_id:str) -> dict:
+    """Returns the comment info like a dict
+    Parameters:
+        comment_id(str): The comment identifier
+    Returns:
+        dict: A dict with the following keys:
+            id(str) - The comment identifier
+            task_id(str) - The identifier of the task the comment attached to
+            user_id(str) - The comment's author identifier
+            text(str or NoneType) - The comment text
+            attached_files(list[str] or NoneType) - A list of ids of files attached to the comment
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('SELECT * FROM comments WHERE id=(%s)', (comment_id,))
+    ans = dict(zip(['id', 'task_id', 'user_id', 'text', 'attached_files'], c.fetchall()))
+    ans['attached_files'] = json.loads(ans['attached_files'])
+    return ans
 
 def get_file_name(file_id:str) -> str:
-    pass
+    """Returns the file name by its id
+    Parameters:
+        file_id(str): The file identifier
+    Returns:
+        str: The file name
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('SELECT name FROM files WHERE id=(%s)', (file_id,))
+    return _parse_mysql_vomit(c.fetchall()).__next__() # Same with c.fetchone()
 
-def get_game_info() -> str:
-    pass
+def get_game_info() -> dict:
+    """Returns the game info as a dict
+    Returns:
+        dict: A dict with the following keys:
+            port(int) - The network port to run web interface on
+            files_folder(str) - A path to the folder for game files
+            register_pass(str) - A password, required for registration (bcrypt)
+            captain_pass(str) - A password, required for registering as
+                a captain (bcrypt)
+            judge_url(str or NoneType) - The main platform URL
+            judge_login(str or NoneType) - A username for the main platform
+            judge_pass(str or NoneType) - A password for the main platform
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('SELECT * FROM game_info')
+    ans = dict(zip(['port', 'files_folder', 'register_pass', 'captain_pass', \
+            'judge_url', 'judge_login', 'judge_pass'], c.fetchone()))
+    return ans
 
 def get_user_info_s(session_id:str) -> dict:
     """Returns the user info by his session id
@@ -104,6 +170,7 @@ def assert_is_authorized(func):
         the request came from an unauthorized
         user
     """
+    @wraps(func)
     def ans(*args, **kwargs):
         try:
             get_user_info_s(request.cookies['session_id'])
@@ -135,8 +202,8 @@ def check_given_params(required_params:set,
         return False
     return True
 
-def assert_ok_params(func, required:set, positional:set):
-    """A decorator for flask route functions.
+def assert_ok_params(required:set, positional:set):
+    """Returns a decorator for flask route functions.
         Interrupts with 400 status code if the request
         parameters are not correct
     Parameters:
@@ -144,20 +211,26 @@ def assert_ok_params(func, required:set, positional:set):
             the api method
         positional(set): A set of poistional parameters for
             the api method
-    
+
     The result function aborts if not all the required arguments
         were specified
     The result function aborts if unknown arguments were specified
     """
-    def ans(*args, **kwargs):
-        if check_given_params(
-                required,
-                required + positional,
-                set(flask.form.keys())
-                ):
-            return func(*args, **kwargs)
-        else:
-            return flask.abort(400)
+    def decorator(func):
+        @wraps(func)
+        def ans(*args, **kwargs):
+            if check_given_params(
+                    required,
+                    required + positional,
+                    set(flask.form.keys())
+                    ):
+                return func(*args, **kwargs)
+            else:
+                return flask.abort(400)
+
+        return ans
+
+    return decorator
 
 # UI:
 pass
@@ -167,15 +240,25 @@ pass
 @assert_ok_params({'login', 'password'}, set())
 def web_authorize():
     try:
-        return json.dumps(authorize(game_id, **flask.request.form))
+        session_id = authorize(game_id, **flask.request.form)
+        resp = app.make_response(
+                json.dumps(session_id)
+                )
+        resp.set_cookie('session_id', session_id)
+        return resp
     except ValueError:
         return flask.abort(401)
 
 @app.route('/api/add_file', methods=['POST'])
-@assert_ok_params({'name'}, set())
+@assert_ok_params(set(), {'name'})
 @assert_is_authorized
 def web_add_file():
-    return json.dumps(add_file(game_id, **flask.request.form, silent=True))
+    if set(flask.request.files.keys()) != {'file'}:
+        return flask.abort(400)
+    f = flask.request.files[f]
+    file_id = add_file(game_id, flask.request.form.get('name', f.filename), silent=True)
+    f.save(path.join(get_game_info()['files_folder'], file_id))
+    return json.dumps(file_id)
 
 @app.route('/api/add_user', methods=['POST'])
 @assert_ok_params({'login', 'password'},
@@ -187,11 +270,70 @@ def web_add_user():
 @assert_ok_params({'task_id'}, {'text', 'files_ids'})
 @assert_is_authorized
 def web_add_comment():
-    user_id = get_user_info_s(flask.cookies['session_id'])
+    user_id = get_user_info_s(flask.cookies['session_id'])['login']
     return json.dumps(add_comment(game_id, user_id, **flask.request.form))
 
-@app.route('/api/rm_task', methods=['POST'])
+@app.route('/api/rm_comment', methods=['POST'])
 @assert_ok_params({'id'}, set())
 @assert_is_authorized
-def web_rm_task():
-    pass
+def web_rm_comment():
+    user_info = get_user_info_s(flask.cookies['session_id'])
+    comment_info = get_comment_info(flask.request.form['id'])
+    if user_info['is_captain'] or (user_info['login'] == comment_info['user_id']):
+        rm_comment(game_id, flask.request.form['id'])
+    else:
+        return flask.abort(403)
+
+@app.route('/api/mark_user', methods=['POST'])
+@assert_ok_params({'id', 'new_type'}, set())
+@assert_is_authorized
+def web_mark_user():
+    if not get_user_info_s(flask.cookies['session_id'])['is_captain']:
+        return flask.abort(403)
+    mark_user(game_id, *(flask.request.form[i] for i in ['id', 'new_type']))
+
+@app.route('/api/mark_task', methods=['POST'])
+@assert_ok_params({'id', 'new_type'}, set())
+@assert_is_authorized
+def web_mark_task():
+    mark_task(game_id, *(flask.request.form[i] for i in ['id', 'new_type']))
+
+@app.route('/api/update_avatar', methods=['POST'])
+@assert_ok_params({'user_id', 'avatar_file_id'}, set())
+@assert_is_authorized
+def web_update_avatar():
+    if get_user_info_s(flask.cookies['session_id']) != flask.request.form['user_id']:
+        return flask.abort(403)
+    update_avatar(game_id, **flask.request.form)
+
+@app.route('/api/take_task', methods=['POST'])
+@assert_ok_params({'task_id', 'user_id'}, set())
+@assert_is_authorized
+def web_take_task():
+    user_info = get_user_info_s(flask.cookies['session_id'])
+    if user_info['is_captain'] or (user_info['login'] == flask.request.form['user_id']):
+        take_task(game_id, **flask.request.form)
+    else:
+        return flask.abort(403)
+
+@app.route('/api/reject_task', methods=['POST'])
+@assert_ok_params({'task_id', 'user_id'}, set())
+@assert_is_authorized
+def web_reject_task():
+    user_info = get_user_info_s(flask.cookies['session_id'])
+    if user_info['is_captain'] or (user_info['login'] == flask.request.form['user_id']):
+        reject_task(game_id, **flask.request.form)
+    else:
+        return flask.abort(403)
+
+
+class WaitForExit(FileSystemEventHandler):
+    def on_created(self, event):
+        if(not event.is_directory) and (event.src_path.split('/')[-1] == 'exit'):
+            _exit(0)
+
+if __name__ == "__main__":
+    game_info = get_game_info(sys.argv[1])
+    observer = Observer()
+    observer.schedule(WaitForExit(), path=game_info['files_folder'])
+    app.run('0.0.0.0', port=game_info['port'])
