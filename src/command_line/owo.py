@@ -179,13 +179,13 @@ def rm_task(game_id:str, task_id:str) -> list:
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('SELECT attached_files_ids FROM comments WHERE task_id=(%s)', (task_id,))
-    ans = reduce(lambda a, b: json.dumps(json.loads(a) + json.loads(b[0])), c.fetchall())
-    if type(ans) is tuple: # Only one attached file
-        ans, = ans
+    ans = []
+    for file_id in c.fetchall():
+        ans += json.loads(file_id[0])
     c.execute('DELETE FROM comments WHERE task_id=(%s)', (task_id,))
     c.execute('DELETE FROM tasks WHERE id=(%s)', (task_id,))
     db.commit()
-    return json.loads(ans)
+    return ans
 
 def rm_file(game_id:str, file_id:str):
     """Removes the file from the game database
@@ -195,6 +195,7 @@ def rm_file(game_id:str, file_id:str):
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
+    c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('DELETE FROM files WHERE id=(%s)', (file_id,))
     db.commit()
@@ -217,7 +218,7 @@ def rm_user(game_id:str, user_id:str) -> str:
     db.commit()
     return ans
 
-def rm_comment(game_id:str, id:str) -> list:
+def rm_comment(game_id:str, comment_id:str) -> list:
     """Removes the comment from the game database
     Parameters:
         game_id(str): The game indentifier
@@ -422,7 +423,7 @@ def main(args: list):
     except IndexError:
         raise ValueError("Wrong number of arguments specified. Try --help for usage")
     except TypeError:
-        raise ValueError("Looks like you either missed an argument, gave an unexpected one or gave an argument of a wrong type. For more information, read the original error mentioned above or read the ovo owo --help")
+        raise ValueError("Looks like you either missed an argument, gave an unexpected one or gave an argument of a wrong type. Or it's just our bug :). For more information, read the original error mentioned above or read the ovo owo --help")
 
     if ans is not None:
         print(json.dumps(ans))

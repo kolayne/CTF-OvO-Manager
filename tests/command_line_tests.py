@@ -180,6 +180,21 @@ def test_owo():
     c.execute('SELECT * FROM solvings')
     assert(set(c.fetchall()) == {('user2', tid)})
 
+    for entity, entity_id in zip(['user', 'comment', 'task', 'file'], ['user2', cid3, tid, fid0]):
+        query = 'SELECT COUNT(*) FROM {}s'.format(entity)
+        c.execute(query)
+        before, = c.fetchone()
+        ans = _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'rm', entity, entity_id])
+        if entity_id == 'user1':
+            assert(json.loads(ans) == fid0)
+        elif entity_id == cid3:
+            assert(json.loads(ans) == [fid2, fid3])
+        elif entity_id == tid:
+            assert(json.loads(ans) == [fid1]) # Because fid2 and fid3 will be remove before this moment
+        c.execute(query)
+        after, = c.fetchone()
+        assert(before - after == 1)
+
     db.close()
     _run_and_check(['../src/command_line/main.py', 'cleanup', game_id])
 
