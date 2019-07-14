@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import sys
 import json
 from os import path, _exit
@@ -105,23 +106,11 @@ def get_comment_info(comment_id:str) -> dict:
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
+    c.execute('USE OvO_' + game_id)
     c.execute('SELECT * FROM comments WHERE id=(%s)', (comment_id,))
     ans = dict(zip(['id', 'task_id', 'user_id', 'text', 'attached_files'], c.fetchall()))
     ans['attached_files'] = json.loads(ans['attached_files'])
     return ans
-
-def get_file_name(file_id:str) -> str:
-    """Returns the file name by its id
-    Parameters:
-        file_id(str): The file identifier
-    Returns:
-        str: The file name
-    """
-    assert_ok_dbname(game_id)
-    db = get_db_connection()
-    c = db.cursor()
-    c.execute('SELECT name FROM files WHERE id=(%s)', (file_id,))
-    return _parse_mysql_vomit(c.fetchall()).__next__() # Same with c.fetchone()
 
 def get_game_info() -> dict:
     """Returns the game info as a dict
@@ -139,6 +128,7 @@ def get_game_info() -> dict:
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
+    c.execute('USE OvO_' + game_id)
     c.execute('SELECT * FROM game_info')
     ans = dict(zip(['port', 'files_folder', 'register_pass', 'captain_pass', \
             'judge_url', 'judge_login', 'judge_pass'], c.fetchone()))
@@ -236,6 +226,7 @@ def assert_ok_params(required:set, positional:set):
 pass
 
 # API:
+# ------ BEGIN NON-CONST API METHODS ------
 @app.route('/api/authorize', methods=['POST'])
 @assert_ok_params({'login', 'password'}, set())
 def web_authorize():
@@ -325,7 +316,96 @@ def web_reject_task():
         reject_task(game_id, **flask.request.form)
     else:
         return flask.abort(403)
+# ------ END NON-CONST API METHODS ------
 
+
+def file_path_and_name(file_id:str) -> tuple:
+    """Returns a path to the file and it's original name, if exists
+    Parameters:
+        file_id(str): The file identifier
+    Returns:
+        tuple: (path_to_file, original_filename) if the file exists, (None, None) otherwise
+    """
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT name FROM files WHERE id=(%s)', (file_id,))
+    name = c.fetchone()
+    if name is None:
+        return (None, None)
+    else:
+        return (path.join(get_game_info()['files_folder'], file_id), name)
+
+# ------ BEGIN CONST API METHODS ------
+@app.route('/api/get_file/<file_id>')
+def web_get_file(file_id):
+    path, name = file_path_and_name(file_id)
+    if path is None:
+        return flask.abort(404)
+    return send_file(path)
+
+@app.route('/api/download_file/<file_id>')
+def web_download_file(file_id):
+    path, name = file_path_and_name(file_id)
+    if path is None:
+        return flask.abort(404)
+    return send_file(path, as_attachment=True, attachment_filename=name)
+
+@app.route('/api/get_users')
+def web_get_users():
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT login FROM users')
+    return json.dumps(
+            [get_user_info(uid) for uid in _parse_mysql_vomit(c.fetchall())]
+            )
+
+@app.route('/api/get_tasks')
+def web_get_tasks():
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT id FROM tasks')
+    return json.dumps(
+            [get_task_info(tid) for tid in _parse_mysql_vomit(c.fetchall())]
+            )
+
+@app.route('/api/get_solvings')
+def web_get_solvings():
+    assert_ok_dbname(game_id)
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT * FROM solvings')
+    return json.dumps(
+            [dict(zip(['user_id', 'task_id'], i)) for i in c.fetchall()]
+            )
+
+@app.route('/api/get_files')
+def web_get_files():
+    assert_ok_dbname()
+    db = get_db_connection()
+    c = db.cursor()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT * FROM files')
+    return json.dumps(
+            [dict(zip(['id', 'name'], i)) for i in c.fetchall()]
+            )
+@app.route('/api/get_comments')
+def web_get_comments():
+    assert_ok_dbname()
+    db = get_db_connection()
+    c = db.connection()
+    c.execute('USE OvO_' + game_id)
+    c.execute('SELECT id FROM comments')
+    return json.dumps(
+            [get_comment_info(cid) for cid in _parse_mysql_vomit(c.fetchall())]
+            )
+# ------ END CONST API METHODS ------
 
 class WaitForExit(FileSystemEventHandler):
     def on_created(self, event):
@@ -333,7 +413,9 @@ class WaitForExit(FileSystemEventHandler):
             _exit(0)
 
 if __name__ == "__main__":
-    game_info = get_game_info(sys.argv[1])
+    game_id = sys.argv[1]
+    game_info = get_game_info()
     observer = Observer()
     observer.schedule(WaitForExit(), path=game_info['files_folder'])
+    observer.start()
     app.run('0.0.0.0', port=game_info['port'])

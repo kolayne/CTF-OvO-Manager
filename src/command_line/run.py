@@ -3,6 +3,7 @@ from sys import argv, stderr
 from getpass import getpass
 from os import listdir, remove, path
 from pathlib import Path
+from subprocess import Popen
 
 import mysql.connector
 import bcrypt
@@ -154,7 +155,10 @@ def _main(args:dict, rerun:bool=False):
                     bcrypt.gensalt()).decode('utf-8')),)
 
     pass # RUN TASKS CATCHER HERE
-    pass # RUN WEB INTERFACE HERE
+    Popen([
+        path.join(path.dirname(path.abspath(__file__)), '../web/main.py'),
+        args['--id']
+        ])
     db.commit()
 
 def main(args:list, rerun:bool=False):

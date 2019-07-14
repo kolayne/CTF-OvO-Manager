@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 from sys import argv, stderr, path
 
-path.append('/usr/ovo')
+path.append('/usr/ovo/command_line')
 from common import is_help_request
 from run import main as run
 from stop import main as stop
