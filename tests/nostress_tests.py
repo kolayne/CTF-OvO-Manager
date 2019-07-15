@@ -3,6 +3,8 @@ from sys import stderr
 from subprocess import run, PIPE
 from importlib.machinery import SourceFileLoader
 import json
+import requests
+from time import sleep
 
 import bcrypt
 
@@ -16,10 +18,11 @@ def _run_and_check(cmd:list) -> str:
     Returns:
         str: The process' stdout
     """
-    p = run(cmd, stdout=PIPE, stderr=PIPE)
-    if(p.returncode):
+    p = run(cmd, stdout=PIPE) # Can't redirect stderr to PIPE because of flask
+    """p = run(cmd, stdout=PIPE, stderr=PIPE)
+    if p.returncode != 0:
         print("Stdout:", p.stdout, file=stderr)
-        print("Stderr:", p.stderr, file=stderr)
+        print("Stderr:", p.stderr, file=stderr)"""
     assert(p.returncode == 0)
     return p.stdout
 
@@ -37,6 +40,15 @@ def _parse_mysql_vomit(vomit:list) -> list:
     if not all(map(lambda x: len(x) == 1, vomit)):
         raise ValueError("Only one field must be requested in the sql query")
     return map(lambda x: x[0], vomit)
+
+def dsorted(lod: list) -> list:
+    """Sorts a list of dicts
+    Parameters:
+        lod(list[dict]): The list to be sorted
+    Returns:
+        list[dict]: Sorted list
+    """
+    return sorted(lod, key=lambda d: list(d.items()))
 
 def test_run_stop_rerun_cleanup():
     game_id = 'TeSTing'
@@ -123,7 +135,7 @@ def test_owo():
     assert(c.fetchall() == [(tid, 'First task', 'N', 'http://google.com', None, '*empty*')])
     cid1 = json.loads(
         _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'comment', '--task-id', tid, \
-                '--user-id', 'user1', '--text', 'comment text'])
+                '--user-id', 'user1', '--text', '*empty*'])
         )
     cid2 = json.loads(
         _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'comment', '--user-id', 'user1', \
@@ -145,7 +157,7 @@ def test_owo():
     c.execute('SELECT * FROM files')
     assert(set(c.fetchall()) == {(fid0, 'user2 avatar'), (fid1, '1'), (fid2, '2'), (fid3, '3')})
     c.execute('SELECT * FROM comments')
-    assert(set(c.fetchall()) == {(cid1, tid, 'user1', 'comment text', json.dumps([])),
+    assert(set(c.fetchall()) == {(cid1, tid, 'user1', '*empty*', json.dumps([])),
         (cid2, tid, 'user1', 'one file', json.dumps([fid1])),
         (cid3, tid, 'user2', 'two files', json.dumps([fid2, fid3]))
         })
@@ -198,9 +210,146 @@ def test_owo():
     db.close()
     _run_and_check(['../src/command_line/main.py', 'cleanup', game_id])
 
+def test_web_api():
+    game_id = 'TeSTing'
+    host = 'http://localhost:5000'
+    _run_and_check(['../src/command_line/main.py', 'run', '--id', 'TeSTing', '--register-pass', '1', \
+            '--captain-pass', '1', '--files-folder', './new', '--port', '5000'])
+    sleep(1)
+    r = requests.post(host + '/api/add_user', data={'login': 'user1', 'password': 'abcde', \
+            'register_pass': '1'})
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/authorize', data={'login': 'user1', 'password': 'abcde'})
+    assert(r.status_code == 200)
+    cookies1 = r.cookies
+    r = requests.post(host + '/api/add_file', data={'name': 'user 2 avatar'}, files={'file': \
+            open(__file__, 'rb')}, cookies=cookies1)
+    assert(r.status_code == 200)
+    fid0 = r.json()
+    r = requests.post(host + '/api/add_user', data={'password': 'edcba', 'login': 'user2', \
+            'avatar': fid0, 'register_pass': '1', 'captain_pass': '1'})
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/authorize', data={'login': 'user2', 'password': 'edcba'})
+    assert(r.status_code == 200)
+    cookies2 = r.cookies
+    fid1, fid2, fid3 = (requests.post(host + '/api/add_file', data={'name': str(i)}, files={'file': \
+            open(__file__, 'rb')}, cookies=cookies2).json() for i in range(1, 4))
+    tid = json.loads(
+            _run_and_check(['../src/command_line/main.py', 'owo', game_id, 'add', 'task', '--text', '*empty*', \
+                    '--original-link', 'http://google.com', '--name', 'First task'])
+            )
+    r = requests.get(host + '/api/get_tasks', cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(len(r.json()) == 1)
+    assert(r.json()[0] == {'id': tid, 'name': 'First task', 'is_solved': False, 'original_link': \
+            'http://google.com', 'original_id': None, 'text': '*empty*', 'solvers': []})
+    r = requests.post(host + '/api/add_comment', data={'task_id': tid, 'text': '*empty*'}, \
+            cookies=cookies1)
+    assert(r.status_code == 200)
+    cid1 = r.json()
+    # Checking can specify file id as a string:
+    r = requests.post(host + '/api/add_comment', data={'text': 'one file', 'files_ids': fid1, \
+            'task_id': tid}, cookies=cookies1) 
+    assert(r.status_code == 200)
+    cid2 = r.json()
+    # Checking can specify files ids as a list
+    r = requests.post(host + '/api/add_comment', data={'text': 'two files', 'files_ids': [fid2, fid3], \
+            'task_id': tid}, cookies=cookies2)
+    assert(r.status_code == 200)
+    cid3 = r.json()
+    r = requests.get(host + '/api/get_users', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(dsorted(r.json()) == dsorted([{'login': 'user1', 'is_captain': False, \
+            'avatar': None, 'solving': []}, {'login': 'user2', 'is_captain': True, 'avatar': fid0, 'solving': []}]))
+    r = requests.get(host + '/api/get_solvings', cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(r.json() == [])
+    r = requests.get(host + '/api/get_files', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(dsorted(r.json()) == dsorted([{'id': fid0, 'name': 'user 2 avatar'}, \
+            {'id': fid1, 'name': '1'}, {'id': fid2, 'name': '2'}, {'id': fid3, 'name': '3'}]))
+    r = requests.get(host + '/api/get_files', cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(len(r.json()) == 4)
+    for file_info in r.json():
+        raw = open(__file__, 'rb').read()
+        r = requests.get(host + '/api/get_file/' + file_info['id'], cookies=cookies2)
+        assert(r.status_code == 200)
+        assert(r.content == raw)
+        r = requests.get(host + '/api/download_file/' + file_info['id'], cookies=cookies1)
+        assert(r.status_code == 200)
+        assert(r.content == raw)
+    r = requests.get(host + '/api/get_comments', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(dsorted(r.json()) == dsorted([{'id': cid1, 'task_id': tid, 'user_id': 'user1', \
+            'text': '*empty*', 'attached_files': []}, {'id': cid2, 'task_id': tid, 'user_id': 'user1', \
+            'text': 'one file', 'attached_files': [fid1]}, {'id': cid3, 'task_id': tid, 'user_id': 'user2', \
+            'text': 'two files', 'attached_files': [fid2, fid3]}]))
+    r = requests.post(host + '/api/mark_user', data={'login': 'user1', 'new_type': 'default'}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/mark_user', data={'login': 'user1', 'new_type': 'captain'}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/mark_user', data={'login': 'user2', 'new_type': 'captain'}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/mark_user', data={'login': 'user2', 'new_type': 'default'}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.get(host + '/api/get_user_info/user1', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(r.json()['is_captain'])
+    r = requests.get(host + '/api/get_user_info/user2', cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(not r.json()['is_captain'])
+    r = requests.post(host + '/api/mark_task', data={'id': tid, 'new_type': 'unsolved'}, \
+            cookies=cookies1)
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/mark_task', data={'id': tid, 'new_type': 'solved'}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.get(host + '/api/get_task_info/' + tid, cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(r.json()['is_solved'])
+    r = requests.post(host + '/api/update_avatar', data={'avatar': fid2}, cookies=cookies1)
+    assert(r.status_code == 200)
+    r = requests.get(host + '/api/get_user_info/user1', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(r.json()['avatar'] == fid2)
+    r = requests.get(host + '/api/get_comment_info/' + cid1, cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(r.json() == {'id': cid1, 'task_id': tid, 'user_id': 'user1', 'text': '*empty*', \
+            'attached_files': []})
+    r = requests.post(host + '/api/take_task', data={'user_id': 'user1', 'task_id': tid}, \
+            cookies=cookies1)
+    assert(r.status_code == 200)
+    r = requests.get(host + '/api/get_task_info/' + tid, cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(r.json()['solvers'] == ['user1'])
+    r = requests.post(host + '/api/take_task', data={'user_id': 'user2', 'task_id': tid}, \
+            cookies=cookies2)
+    assert(r.status_code == 200)
+    r = requests.post(host + '/api/reject_task', data={'user_id': 'user1', 'task_id': tid}, \
+            cookies=cookies1)
+    assert(r.status_code == 200)
+    r = requests.get(host + '/api/get_user_info/user2', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(r.json()['solving'] == [tid])
+    r = requests.post(host + '/api/rm_comment', data={'id': cid3}, \
+            cookies=cookies1)
+    assert(r.status_code == 200)
+    assert(sorted(r.json()) == sorted([fid2, fid3]))
+    r = requests.get(host + '/api/get_comments', cookies=cookies2)
+    assert(r.status_code == 200)
+    assert(len(r.json()) == 2)
+    assert(all(i['id'] in [cid1, cid2] for i in r.json()))
+    _run_and_check(['../src/command_line/main.py', 'cleanup', game_id])
+
 if __name__ == "__main__":
     ts = TestStation()
-    ts.add_test(test_run_stop_rerun_cleanup)
+    #ts.add_test(test_run_stop_rerun_cleanup)
     ts.add_test(test_owo)
+    ts.add_test(test_web_api)
     ts.run_tests()
     exit(0)
