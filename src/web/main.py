@@ -9,7 +9,7 @@ import bcrypt
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-sys.path.append('../command_line')
+sys.path.append(path.join(path.dirname(__file__), '../command_line'))
 from owo import add_file, add_user, add_comment, \
         rm_comment, mark_user, mark_task, \
         update_avatar, take_task, reject_task, \
@@ -44,8 +44,8 @@ def get_user_info(user_id:str) -> dict:
         dict: A dict with the following keys:
             login(str) - the user login
             is_captain(bool) - if the user is a captain
-            avatar(str) - the avatar file id
-            solving(list) - ids of tasks took by the user
+            avatar(str or NoneType) - the avatar file id
+            solving(list[str]) - ids of tasks took by the user
 
     If the user doesn't exist, the returned dict will be:
         {'login': 'DELETED', 'is_captain': False, 'avatar': None,
@@ -55,15 +55,15 @@ def get_user_info(user_id:str) -> dict:
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    c.execue('SELECT is_admin, avatar FROM users WHERE login=(%s)',
+    c.execute('SELECT is_captain, avatar FROM users WHERE login=(%s)',
             (user_id,))
     user_info = c.fetchone()
     if user_info is None:
         return {'login': 'DELETED', 'is_captain': False, 'avatar': None, 'solving': []}
     else:
-        c.execute('SELECT task_id FROM solvings WHERE user_id=(%s)', (user_info['login'],))
-        return {'login': user_id, 'is_captain': user_info[0], 'avatar': user_info[1],
-                'solving': list(_parse_mysql_vomit(c.fetchall()))}
+        c.execute('SELECT task_id FROM solvings WHERE user_id=(%s)', (user_id,))
+        return {'login': user_id, 'is_captain': (True if user_info[0] == 'Y' else False),
+                'avatar': user_info[1], 'solving': list(_parse_mysql_vomit(c.fetchall()))}
 
 def get_task_info(task_id:str) -> dict:
     """Returns the task info like a dict
@@ -72,12 +72,12 @@ def get_task_info(task_id:str) -> dict:
     Returns:
         dict: A dict with the following keys:
             id(str) - The task identifier
-            name(str or NoneType) - The task name
+            name(str) - The task name
             is_solved(bool) - If the task solved or not
             original_link(str or NoneType) - The link to the task on the main platform
             original_id(str or NoneType) - The task identifier on main platform
             text(str or NoneType) - The task text
-            solvers(list) - ids of users, who took the task
+            solvers(list[str]) - ids of users, who took the task
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -101,14 +101,14 @@ def get_comment_info(comment_id:str) -> dict:
             task_id(str) - The identifier of the task the comment attached to
             user_id(str) - The comment's author identifier
             text(str or NoneType) - The comment text
-            attached_files(list[str] or NoneType) - A list of ids of files attached to the comment
+            attached_files(list[str]) - A list of ids of files attached to the comment
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('SELECT * FROM comments WHERE id=(%s)', (comment_id,))
-    ans = dict(zip(['id', 'task_id', 'user_id', 'text', 'attached_files'], c.fetchall()))
+    ans = dict(zip(['id', 'task_id', 'user_id', 'text', 'attached_files'], c.fetchone()))
     ans['attached_files'] = json.loads(ans['attached_files'])
     return ans
 
@@ -163,8 +163,8 @@ def assert_is_authorized(func):
     @wraps(func)
     def ans(*args, **kwargs):
         try:
-            get_user_info_s(request.cookies['session_id'])
-        except (IndexError, ValueError):
+            get_user_info_s(flask.request.cookies['session_id'])
+        except (KeyError, ValueError):
             return flask.abort(403)
 
         return func(*args, **kwargs)
@@ -211,8 +211,8 @@ def assert_ok_params(required:set, positional:set):
         def ans(*args, **kwargs):
             if check_given_params(
                     required,
-                    required + positional,
-                    set(flask.form.keys())
+                    required.union(positional),
+                    set(flask.request.form.keys())
                     ):
                 return func(*args, **kwargs)
             else:
@@ -241,69 +241,91 @@ def web_authorize():
         return flask.abort(401)
 
 @app.route('/api/add_file', methods=['POST'])
-@assert_ok_params(set(), {'name'})
+@assert_ok_params({'name'}, set())
 @assert_is_authorized
 def web_add_file():
     if set(flask.request.files.keys()) != {'file'}:
         return flask.abort(400)
-    f = flask.request.files[f]
+    f = flask.request.files['file']
     file_id = add_file(game_id, flask.request.form.get('name', f.filename), silent=True)
     f.save(path.join(get_game_info()['files_folder'], file_id))
     return json.dumps(file_id)
 
 @app.route('/api/add_user', methods=['POST'])
-@assert_ok_params({'login', 'password'},
-        {'is_captain', 'avatar'})
+@assert_ok_params({'login', 'password', 'register_pass'},
+        {'captain_pass', 'avatar'})
 def web_add_user():
-    add_user(game_id, **flask.request.form)
+    if not bcrypt.checkpw(
+            flask.request.form['register_pass'].encode('utf-8'),
+            get_game_info()['register_pass'].encode('utf-8')
+            ):
+        return flaks.abort(403)
+    args = {k: v for k, v in flask.request.form.items() if k in {'login', \
+            'password', 'avatar'}}
+    is_captain = False
+    if 'captain_pass' in flask.request.form.keys():
+        if bcrypt.checkpw(
+                flask.request.form['captain_pass'].encode('utf-8'),
+                get_game_info()['captain_pass'].encode('utf-8')
+                ):
+            is_captain = True
+        else:
+            return flask.abort(403)
+    add_user(game_id, **args, is_captain=is_captain)
+    return ''
 
 @app.route('/api/add_comment', methods=['POST'])
 @assert_ok_params({'task_id'}, {'text', 'files_ids'})
 @assert_is_authorized
 def web_add_comment():
-    user_id = get_user_info_s(flask.cookies['session_id'])['login']
-    return json.dumps(add_comment(game_id, user_id, **flask.request.form))
+    user_id = get_user_info_s(flask.request.cookies['session_id'])['login']
+    args = {k: v for k, v in flask.request.form.items() if k != 'files_ids'}
+    args['files_ids'] = flask.request.form.getlist('files_ids')
+    return json.dumps(add_comment(game_id, user_id, **args))
 
 @app.route('/api/rm_comment', methods=['POST'])
 @assert_ok_params({'id'}, set())
 @assert_is_authorized
 def web_rm_comment():
-    user_info = get_user_info_s(flask.cookies['session_id'])
+    user_info = get_user_info_s(flask.request.cookies['session_id'])
     comment_info = get_comment_info(flask.request.form['id'])
     if user_info['is_captain'] or (user_info['login'] == comment_info['user_id']):
-        rm_comment(game_id, flask.request.form['id'])
+        return json.dumps(rm_comment(game_id, flask.request.form['id']))
     else:
         return flask.abort(403)
 
 @app.route('/api/mark_user', methods=['POST'])
-@assert_ok_params({'id', 'new_type'}, set())
+@assert_ok_params({'login', 'new_type'}, set())
 @assert_is_authorized
 def web_mark_user():
-    if not get_user_info_s(flask.cookies['session_id'])['is_captain']:
+    if not get_user_info_s(flask.request.cookies['session_id'])['is_captain']:
         return flask.abort(403)
-    mark_user(game_id, *(flask.request.form[i] for i in ['id', 'new_type']))
+    mark_user(game_id, *(flask.request.form[i] for i in ['login', 'new_type']))
+    return ''
 
 @app.route('/api/mark_task', methods=['POST'])
 @assert_ok_params({'id', 'new_type'}, set())
 @assert_is_authorized
 def web_mark_task():
     mark_task(game_id, *(flask.request.form[i] for i in ['id', 'new_type']))
+    return ''
 
 @app.route('/api/update_avatar', methods=['POST'])
-@assert_ok_params({'user_id', 'avatar_file_id'}, set())
+@assert_ok_params({'avatar'}, set())
 @assert_is_authorized
 def web_update_avatar():
-    if get_user_info_s(flask.cookies['session_id']) != flask.request.form['user_id']:
-        return flask.abort(403)
-    update_avatar(game_id, **flask.request.form)
+    user_id = get_user_info_s(flask.request.cookies['session_id'])['login']
+    update_avatar(game_id, user_id, flask.request.form['avatar'])
+    return ''
 
 @app.route('/api/take_task', methods=['POST'])
 @assert_ok_params({'task_id', 'user_id'}, set())
 @assert_is_authorized
 def web_take_task():
-    user_info = get_user_info_s(flask.cookies['session_id'])
+    user_info = get_user_info_s(flask.request.cookies['session_id'])
     if user_info['is_captain'] or (user_info['login'] == flask.request.form['user_id']):
         take_task(game_id, **flask.request.form)
+        return ''
     else:
         return flask.abort(403)
 
@@ -311,9 +333,10 @@ def web_take_task():
 @assert_ok_params({'task_id', 'user_id'}, set())
 @assert_is_authorized
 def web_reject_task():
-    user_info = get_user_info_s(flask.cookies['session_id'])
+    user_info = get_user_info_s(flask.request.cookies['session_id'])
     if user_info['is_captain'] or (user_info['login'] == flask.request.form['user_id']):
         reject_task(game_id, **flask.request.form)
+        return ''
     else:
         return flask.abort(403)
 # ------ END NON-CONST API METHODS ------
@@ -335,24 +358,32 @@ def file_path_and_name(file_id:str) -> tuple:
     if name is None:
         return (None, None)
     else:
-        return (path.join(get_game_info()['files_folder'], file_id), name)
+        return (path.join(get_game_info()['files_folder'], file_id), name[0])
 
 # ------ BEGIN CONST API METHODS ------
 @app.route('/api/get_file/<file_id>')
+@assert_is_authorized
 def web_get_file(file_id):
     path, name = file_path_and_name(file_id)
     if path is None:
         return flask.abort(404)
-    return send_file(path)
+    return flask.send_file(path)
 
 @app.route('/api/download_file/<file_id>')
+@assert_is_authorized
 def web_download_file(file_id):
     path, name = file_path_and_name(file_id)
     if path is None:
         return flask.abort(404)
-    return send_file(path, as_attachment=True, attachment_filename=name)
+    return flask.send_file(path, as_attachment=True, attachment_filename=name)
+
+@app.route('/api/get_user_info/<user_id>')
+@assert_is_authorized
+def web_get_user_info(user_id):
+    return json.dumps(get_user_info(user_id))
 
 @app.route('/api/get_users')
+@assert_is_authorized
 def web_get_users():
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -363,7 +394,13 @@ def web_get_users():
             [get_user_info(uid) for uid in _parse_mysql_vomit(c.fetchall())]
             )
 
+@app.route('/api/get_task_info/<task_id>')
+@assert_is_authorized
+def web_get_task_info(task_id):
+    return json.dumps(get_task_info(task_id))
+
 @app.route('/api/get_tasks')
+@assert_is_authorized
 def web_get_tasks():
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -375,6 +412,7 @@ def web_get_tasks():
             )
 
 @app.route('/api/get_solvings')
+@assert_is_authorized
 def web_get_solvings():
     assert_ok_dbname(game_id)
     db = get_db_connection()
@@ -385,9 +423,15 @@ def web_get_solvings():
             [dict(zip(['user_id', 'task_id'], i)) for i in c.fetchall()]
             )
 
+@app.route('/api/get_file_name/<file_id>')
+@assert_is_authorized
+def web_get_file_info(file_id):
+    return json.dumps(file_path_and_name(file_id)[1])
+
 @app.route('/api/get_files')
+@assert_is_authorized
 def web_get_files():
-    assert_ok_dbname()
+    assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
@@ -395,11 +439,18 @@ def web_get_files():
     return json.dumps(
             [dict(zip(['id', 'name'], i)) for i in c.fetchall()]
             )
+
+@app.route('/api/get_comment_info/<comment_id>')
+@assert_is_authorized
+def web_get_comment_info(comment_id):
+    return json.dumps(get_comment_info(comment_id))
+
 @app.route('/api/get_comments')
+@assert_is_authorized
 def web_get_comments():
-    assert_ok_dbname()
+    assert_ok_dbname(game_id)
     db = get_db_connection()
-    c = db.connection()
+    c = db.cursor()
     c.execute('USE OvO_' + game_id)
     c.execute('SELECT id FROM comments')
     return json.dumps(

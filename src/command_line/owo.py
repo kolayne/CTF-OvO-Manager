@@ -1,3 +1,4 @@
+from os import remove, path
 from sys import stderr, argv
 from random import random
 from hashlib import sha3_512
@@ -197,6 +198,18 @@ def rm_file(game_id:str, file_id:str):
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
+    c.execute('SELECT files_folder FROM game_info')
+    folder, = c.fetchone()
+    try:
+        remove(path.join(folder, file_id))
+    except FileNotFoundError:
+        print("Important warning: couldn't delete a file, because it doesn't exist", file=stderr)
+    except PermissionError:
+        print("Important warning: couldn't delete a file, because of permissions", file=stderr)
+    except OSError as e:
+        print("Important warning: couldn't delete a file, because of OSError ({})".format(e), file=stderr)
+    except Exception as e:
+        print("Important warning: couldn't delete the folder, because of unknown error ({})".format(e), file=stderr)
     c.execute('DELETE FROM files WHERE id=(%s)', (file_id,))
     db.commit()
 
@@ -277,18 +290,18 @@ def mark_task(game_id:str, task_id:str, new_type:str):
         raise ValueError("Unknown task type. Must be either solved or unsolved")
     db.commit()
 
-def update_avatar(game_id:str, user_id:str, avatar_file_id:str):
+def update_avatar(game_id:str, user_id:str, avatar:str):
     """Updates the user's avatar with the given
     Parameters:
         game_id(str): The game identifier
         user_id(str): The user identifier
-        avatar_file_id(str): The avatar file id (got from add_file)
+        avatar(str): The avatar file id (got from add_file)
     """
     assert_ok_dbname(game_id)
     db = get_db_connection()
     c = db.cursor()
     c.execute('USE OvO_' + game_id)
-    c.execute('UPDATE users SET avatar=(%s) WHERE login=(%s)', (avatar_file_id, user_id))
+    c.execute('UPDATE users SET avatar=(%s) WHERE login=(%s)', (avatar, user_id))
     db.commit()
 
 def take_task(game_id:str, task_id:str, user_id:str):

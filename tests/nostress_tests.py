@@ -78,8 +78,18 @@ def test_run_stop_rerun_cleanup():
     assert(c.fetchone() == (0,))
     c.execute('SELECT COUNT(*) FROM game_info')
     assert(c.fetchone() == (1,))
-    c.execute('SELECT * FROM game_info')
-    assert(c.fetchone() == (5000, path.abspath('./new'), '1', '2', None, None, None, '0'))
+    c.execute('SELECT port, files_folder, judge_url, judge_login, judge_pass FROM game_info')
+    assert(c.fetchone() == (5000, path.abspath('./new'), None, None, None))
+    c.execute('SELECT register_pass FROM game_info')
+    assert(bcrypt.checkpw(
+        b'1',
+        c.fetchone()[0].encode('utf-8')
+        ))
+    c.execute('SELECT captain_pass FROM game_info')
+    assert(bcrypt.checkpw(
+        b'2',
+        c.fetchone()[0].encode('utf-8')
+        ))
 
     _run_and_check(['../src/command_line/main.py', 'stop', game_id])
     assert('exit' in listdir('new'))
@@ -215,7 +225,6 @@ def test_web_api():
     host = 'http://localhost:5000'
     _run_and_check(['../src/command_line/main.py', 'run', '--id', 'TeSTing', '--register-pass', '1', \
             '--captain-pass', '1', '--files-folder', './new', '--port', '5000'])
-    sleep(1)
     r = requests.post(host + '/api/add_user', data={'login': 'user1', 'password': 'abcde', \
             'register_pass': '1'})
     assert(r.status_code == 200)
@@ -348,7 +357,7 @@ def test_web_api():
 
 if __name__ == "__main__":
     ts = TestStation()
-    #ts.add_test(test_run_stop_rerun_cleanup)
+    ts.add_test(test_run_stop_rerun_cleanup)
     ts.add_test(test_owo)
     ts.add_test(test_web_api)
     ts.run_tests()

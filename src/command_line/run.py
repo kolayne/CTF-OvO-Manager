@@ -3,7 +3,8 @@ from sys import argv, stderr
 from getpass import getpass
 from os import listdir, remove, path
 from pathlib import Path
-from subprocess import Popen
+from subprocess import Popen, DEVNULL
+from time import sleep
 
 import mysql.connector
 import bcrypt
@@ -54,7 +55,7 @@ def init_db(db_name:str, c):
     c.execute(query)
     query = "CREATE TABLE tasks ( \
             id VARCHAR(128) PRIMARY KEY NOT NULL, \
-            name TEXT, \
+            name TEXT NOT NULL, \
             is_solved ENUM('Y', 'N') NOT NULL DEFAULT 'N', \
             original_link TEXT, \
             original_id TEXT, \
@@ -115,6 +116,16 @@ def _main(args:dict, rerun:bool=False):
     
     if '--files-folder' in args.keys():
         args['--files-folder'] = path.abspath(args['--files-folder'])
+    if '--register-pass' in args.keys():
+        args['--register-pass'] = bcrypt.hashpw(
+                args['--register-pass'].encode('utf-8'),
+                bcrypt.gensalt()
+                ).decode('utf-8')
+    if '--captain-pass' in args.keys():
+        args['--captain-pass'] = bcrypt.hashpw(
+                args['--captain-pass'].encode('utf-8'),
+                bcrypt.gensalt()
+                ).decode('utf-8')
 
     if rerun: # Updating values
         c.execute('USE OvO_' + args['--id'])
@@ -145,21 +156,13 @@ def _main(args:dict, rerun:bool=False):
             if len(list(listdir(args['--files-folder']))):
                raise ValueError("The folder for files must be empty")
 
-    if 'register_pass' in args.keys():
-        c.execute('UPDATE game_info SET register_pass=(%s)',
-                (bcrypt.hashpw(args['register_pass'].encode('utf-8'),
-                    bcrypt.gensalt()).decode('utf-8')),)
-    if 'captain_pass' in args.keys():
-        c.execute('UPDATE game_info SET captain_pass=(%s)',
-                (bcrypt.hashpw(args['captain_pass'].encode('utf-8').
-                    bcrypt.gensalt()).decode('utf-8')),)
-
     pass # RUN TASKS CATCHER HERE
+    db.commit()
     Popen([
         path.join(path.dirname(path.abspath(__file__)), '../web/main.py'),
         args['--id']
-        ])
-    db.commit()
+        ], stdout=DEVNULL)
+    sleep(1)
 
 def main(args:list, rerun:bool=False):
     """Runs a new OvO game
